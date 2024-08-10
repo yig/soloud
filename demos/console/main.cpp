@@ -46,6 +46,7 @@ std::vector<LCString> split(const std::string& str, const std::string& delim)
 {
 	std::vector<LCString> tokens;
 	size_t prev = 0, pos = 0;
+	if (str[0] != ';')
 	do
 	{
 		if (str[prev] == '"')

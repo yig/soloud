@@ -41,6 +41,31 @@ public:
 	}
 };
 
+std::vector<LCString> split(const std::string& str, const std::string& delim)
+{
+	std::vector<LCString> tokens;
+	size_t prev = 0, pos = 0;
+	do
+	{
+		if (str[prev] == '"')
+		{
+			prev++;
+			pos = str.find('"', prev);
+			if (pos == std::string::npos) pos = str.length();
+		}
+		else
+		{
+			pos = str.find(delim, prev);
+			if (pos == std::string::npos) pos = str.length();
+		}
+		std::string token = str.substr(prev, pos - prev);
+		if (!token.empty()) tokens.push_back(token);
+		prev = pos + delim.length();
+
+	} while (pos < str.length() && prev < str.length());
+	return tokens;
+}
+
 union rettype
 {
 	void* p;
@@ -55,6 +80,7 @@ std::vector<LCString> gCmd;
 typedef void (*funcptr)();
 
 std::unordered_map<LCString, funcptr, std::hash<std::string>, std::equal_to<std::string> > gGlobalFuncs;
+std::unordered_map<LCString, std::string, std::hash<std::string>, std::equal_to<std::string> > gMacros;
 
 struct callStruct
 {
@@ -65,6 +91,11 @@ struct callStruct
 };
 
 std::unordered_map<LCString, std::unordered_map<LCString, callStruct, std::hash<std::string>, std::equal_to<std::string> >, std::hash<std::string>, std::equal_to<std::string> > gSoloudCalls;
+
+void prompt()
+{
+	printf("S> ");
+}
 
 int getVarOrInt(LCString& s)
 {
@@ -102,6 +133,15 @@ void cmd_list()
 		count++;
 	}
 	printf("%d variables found\n", count);
+	printf("Current set of macros:\n");
+	count = 0;
+	for (auto& kv : gMacros)
+	{
+		printf(" \"%s\" - \"%s\"\n", kv.first.c_str(), kv.second.c_str());
+		count++;
+	}
+	printf("%d macros found\n", count);
+
 }
 
 void cmd_set()
@@ -124,11 +164,64 @@ void cmd_unset()
 	gVar.erase(gCmd[1]);
 }
 
+void run_cmd(char *cmdbuf);
+
+void cmd_run()
+{
+	if (gCmd.size() != 2)
+	{
+		printf("run: 1 parameter expected\n");
+		return;
+	}
+	FILE* f = fopen(gCmd[1].c_str(), "r");
+	if (!f)
+	{
+		printf("run: \"%s\" not found\n", gCmd[1].c_str());
+		return;
+	}
+	char fn[256];
+	strcpy(fn, gCmd[1].c_str());
+	char cmdbuf[256];
+	int cp = 0;
+	while (!feof(f))
+	{
+		int v = fgetc(f);
+		if (v == '\n' || v == '\r' || v == EOF)
+		{
+			if (cp > 0)
+			{
+				cmdbuf[cp] = 0;
+				cp = 0;				
+				printf("%s> %s\n", fn, cmdbuf);
+				gCmd = split(cmdbuf, " ");
+				run_cmd(cmdbuf);
+			}
+		}
+		else
+		{
+			cmdbuf[cp] = v;
+			cp++;
+		}
+	}
+	fclose(f);	
+}
+
+void cmd_define()
+{
+	if (gCmd.size() != 3)
+	{
+		printf("define: 2 parameters expected\n");
+		return;
+	}
+	gMacros[gCmd[1]] = gCmd[2];
+}
+
+
 void cmd_help()
 {
 	if (gCmd.size() == 1)
 	{
-		printf("Global commands: help, quit, list, set, unset (use \"help cmd\" for more info)\n");
+		printf("Global commands: help, quit, list, set, unset, run, define (use \"help cmd\" for more info)\n");
 		printf("General command syntax:\n DEST OBJ FUNC PARAM PARAM PARAM..\nwhere:\n DEST is destination variable name\n OBJ is a soloud object type\n FUNC is function in the object\n PARAM is a parameter to the function\n");
 		printf("Objects (do \"help obj\" for more info on the object):\n ");
 		for (auto& kv : gSoloudCalls)
@@ -153,7 +246,7 @@ void cmd_help()
 		}
 		if (gCmd[1] == "list")
 		{
-			printf("List currently existing variables.\n");
+			printf("List currently existing variables and macros.\n");
 			return;
 		}
 		if (gCmd[1] == "set")
@@ -164,6 +257,16 @@ void cmd_help()
 		if (gCmd[1] == "unset")
 		{
 			printf("Remove a variable. Example:\n unset begone\n");
+			return;
+		}
+		if (gCmd[1] == "run")
+		{
+			printf("Run commands from a text file. Example:\n run foo.txt\n");
+			return;
+		}
+		if (gCmd[1] == "define")
+		{
+			printf("Define a macro. Example:\n define bang \"0 soloud play s gunshot\"\n");
 			return;
 		}
 		if (gSoloudCalls.count(gCmd[1]) == 0)
@@ -206,37 +309,71 @@ void setup()
 	gGlobalFuncs["list"] = cmd_list;
 	gGlobalFuncs["set"] = cmd_set;
 	gGlobalFuncs["unset"] = cmd_unset;
+	gGlobalFuncs["run"] = cmd_run;
+	gGlobalFuncs["define"] = cmd_define;
 	setup_soloud_calls();
 }
 
-void prompt()
+void run_cmd(char *cmdbuf)
 {
-	printf("S> ");
-}
-
-std::vector<LCString> split(const std::string& str, const std::string& delim)
-{
-	std::vector<LCString> tokens;
-	size_t prev = 0, pos = 0;
-	do
+	if (gCmd.size() > 0)
 	{
-		if (str[prev] == '"')
+		if (gGlobalFuncs.count(gCmd[0]) != 0)
 		{
-			prev++;
-			pos = str.find('"', prev);
-			if (pos == std::string::npos) pos = str.length();			
+			gGlobalFuncs[gCmd[0]]();
 		}
 		else
 		{
-			pos = str.find(delim, prev);
-			if (pos == std::string::npos) pos = str.length();
-		}
-		std::string token = str.substr(prev, pos - prev);
-		if (!token.empty()) tokens.push_back(token);
-		prev = pos + delim.length();
+			if (gCmd.size() == 1 && gMacros.count(gCmd[0]) != 0)
+			{
+				strcpy(cmdbuf, gMacros[gCmd[0]].c_str());
+				gCmd = split(cmdbuf, " ");
+				run_cmd(cmdbuf);
+				return;
+			}
 
-	} while (pos < str.length() && prev < str.length());
-	return tokens;
+			if (gCmd.size() < 3)
+			{
+				printf("Unknown command \"%s\" (try help)\n", cmdbuf);
+			}
+			else
+			{
+				if (gSoloudCalls.count(gCmd[1]) == 0)
+				{
+					printf("Unknown object \"%s\"\n", gCmd[1].c_str());
+				}
+				else
+					if (gSoloudCalls[gCmd[1]].count(gCmd[2]) == 0)
+					{
+						printf("Object \"%s\" doesn't have function \"%s\"\n", gCmd[1].c_str(), gCmd[2].c_str());
+					}
+					else
+					{
+						int ok = 1;
+						if (gCmd.size() != 3 + gSoloudCalls[gCmd[1]][gCmd[2]].parcount) {
+							printf("Invalid number of parameters (%d expected)\n", gSoloudCalls[gCmd[1]][gCmd[2]].parcount);
+							ok = 0;
+						}
+						else
+						{
+							for (int i = 0; i < gSoloudCalls[gCmd[1]][gCmd[2]].parcount; i++)
+							{
+								if ((gSoloudCalls[gCmd[1]][gCmd[2]].varmask & (1 << i)) != 0 && gVar.count(gCmd[3 + i]) == 0)
+								{
+									printf("Variable \"%s\" not found\n", gCmd[3].c_str());
+									ok = 0;
+								}
+							}
+						}
+
+						if (ok)
+						{
+							gSoloudCalls[gCmd[1]][gCmd[2]].p();
+						}
+					}
+			}
+		}
+	}
 }
 
 int main(int parc, char** pars)
@@ -249,7 +386,7 @@ int main(int parc, char** pars)
 	{
 		int p = 0;
 		int c = 0;
-		while (c != '\n')
+		while (c != '\n' && p < 255)
 		{
 			c = getchar();
 			if (c != '\n')
@@ -261,60 +398,13 @@ int main(int parc, char** pars)
 		}
 		cmdbuf[p] = 0;
 		gCmd = split(cmdbuf, " ");
+		run_cmd(cmdbuf);
 /*
 		for (auto x : gCmd)
 		{
 			printf("\"%s\"\n", x.c_str());
 		}
 		*/
-		if (gCmd.size() > 0)
-		{
-			if (gGlobalFuncs.count(gCmd[0]) != 0)
-			{
-				gGlobalFuncs[gCmd[0]]();
-			}
-			else
-				if (gCmd.size() < 3)
-				{
-					printf("Unknown command \"%s\" (try help)\n", cmdbuf);
-				}
-				else
-				{
-					if (gSoloudCalls.count(gCmd[1]) == 0)
-					{
-						printf("Unknown object \"%s\"\n", gCmd[1].c_str());
-					}
-					else
-						if (gSoloudCalls[gCmd[1]].count(gCmd[2]) == 0)
-						{
-							printf("Object \"%s\" doesn't have function \"%s\"\n", gCmd[1].c_str(), gCmd[2].c_str());
-						}
-						else
-						{
-							int ok = 1;
-							if (gCmd.size() != 3 + gSoloudCalls[gCmd[1]][gCmd[2]].parcount) {
-								printf("Invalid number of parameters (%d expected)\n", gSoloudCalls[gCmd[1]][gCmd[2]].parcount);
-								ok = 0;
-							}
-							else
-							{
-								for (int i = 0; i < gSoloudCalls[gCmd[1]][gCmd[2]].parcount; i++)
-								{
-									if ((gSoloudCalls[gCmd[1]][gCmd[2]].varmask & (1 << i)) != 0 && gVar.count(gCmd[3+i]) == 0)
-									{
-										printf("Variable \"%s\" not found\n", gCmd[3].c_str());
-										ok = 0;
-									}
-								}
-							}
-
-							if (ok)
-							{
-								gSoloudCalls[gCmd[1]][gCmd[2]].p();
-							}
-						}
-				}
-		}
 		prompt();
 	}
 	return 0;

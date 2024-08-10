@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <string>
+#include <cstring>
 
 #define TOSTR(x) #x
 #define STRINGIFY(x) TOSTR(x)

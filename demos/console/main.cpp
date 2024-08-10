@@ -1,3 +1,4 @@
+#include "soloud.h" // for SOLOUD_VERSION
 #include "soloud_c.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +60,8 @@ struct callStruct
 {
 	funcptr p;
 	const char* info;
+	int parcount;
+	int varmask;
 };
 
 std::unordered_map<LCString, std::unordered_map<LCString, callStruct, std::hash<std::string>, std::equal_to<std::string> >, std::hash<std::string>, std::equal_to<std::string> > gSoloudCalls;
@@ -208,7 +211,7 @@ void setup()
 
 void prompt()
 {
-	printf("%c> ", 14);
+	printf("S> ");
 }
 
 std::vector<LCString> split(const std::string& str, const std::string& delim)
@@ -288,7 +291,27 @@ int main(int parc, char** pars)
 						}
 						else
 						{
-							gSoloudCalls[gCmd[1]][gCmd[2]].p();
+							int ok = 1;
+							if (gCmd.size() != 3 + gSoloudCalls[gCmd[1]][gCmd[2]].parcount) {
+								printf("Invalid number of parameters (%d expected)\n", gSoloudCalls[gCmd[1]][gCmd[2]].parcount);
+								ok = 0;
+							}
+							else
+							{
+								for (int i = 0; i < gSoloudCalls[gCmd[1]][gCmd[2]].parcount; i++)
+								{
+									if ((gSoloudCalls[gCmd[1]][gCmd[2]].varmask & (1 << i)) != 0 && gVar.count(gCmd[3+i]) == 0)
+									{
+										printf("Variable \"%s\" not found\n", gCmd[3].c_str());
+										ok = 0;
+									}
+								}
+							}
+
+							if (ok)
+							{
+								gSoloudCalls[gCmd[1]][gCmd[2]].p();
+							}
 						}
 				}
 		}

@@ -49,6 +49,7 @@ for obj in soloud_codegen.soloud_type:
         if (obj + "_") == func[1][0:len(obj)+1:]:
             fo.write(f'void call_{func[1]}()\n')
             fo.write(f'{{\n')
+            """ dedup this code..
             fo.write(f'  if (gCmd.size() != {parcount(func[2]) + 3})')
             fo.write(f'  {{\n')
             fo.write(f'    printf("Invalid number of parameters ({parcount(func[2])} expected)\\n");\n')
@@ -67,7 +68,7 @@ for obj in soloud_codegen.soloud_type:
                         fo.write(f'    return;\n')
                         fo.write(f'  }}\n')
                 i += 1
-
+"""
             fo.write(f'  ')
             if func[0] != 'void':
                 fo.write(f'{func[0]} res = ({func[0]})')
@@ -114,6 +115,18 @@ for obj in soloud_codegen.soloud_type:
         if (obj + "_") == func[1][0:len(obj)+1:]:
             fo.write(f'  gSoloudCalls["{obj}"]["{func[1][len(obj)+1:]}"].p = call_{func[1]};\n')
             fo.write(f'  gSoloudCalls["{obj}"]["{func[1][len(obj)+1:]}"].info = "{cify(func)}";\n')
+            fo.write(f'  gSoloudCalls["{obj}"]["{func[1][len(obj)+1:]}"].parcount = {parcount(func[2])};\n')
+            varmask = 0
+            parpos = 0
+            for param in func[2]:                
+                if len(param) > 0:
+                    if 'char *' in param[0]:
+                        pass
+                    elif '*' in param[0]:
+                        varmask |= 1 << parpos
+                parpos += 1
+            fo.write(f'  gSoloudCalls["{obj}"]["{func[1][len(obj)+1:]}"].varmask = {varmask};\n')
+
 
 fo.write("}\n")
 
